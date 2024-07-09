@@ -1,2 +1,3 @@
 #nullable enable
-
+Aspire.Hosting.Dapr.DaprOptions.EnableAspireComponents.get -> bool?
+Aspire.Hosting.Dapr.DaprOptions.EnableAspireComponents.set -> void

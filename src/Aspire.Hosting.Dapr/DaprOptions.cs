@@ -20,4 +20,12 @@ public sealed record DaprOptions
     /// Telemetry is enabled by default.
     /// </remarks>
     public bool? EnableTelemetry { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether Aspire-based components should be used for generic Dapr components.
+    /// </summary>
+    /// <remarks>
+    /// Aspire-based components are disabled by default.
+    /// </remarks>
+    public bool? EnableAspireComponents { get; set; }
 }

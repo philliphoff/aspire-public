@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Diagnostics.CodeAnalysis;
 using System.Net.Sockets;
+using Aspire.Hosting.Dapr.PluggableComponents;
 using static Aspire.Hosting.Dapr.CommandLineArgs;
 
 namespace Aspire.Hosting.Dapr;
@@ -20,15 +21,22 @@ internal sealed class DaprDistributedApplicationLifecycleHook : IDistributedAppl
     private readonly IHostEnvironment _environment;
     private readonly ILogger<DaprDistributedApplicationLifecycleHook> _logger;
     private readonly DaprOptions _options;
+    private readonly PluggableComponentsManager _pluggableComponentsManager;
 
     private string? _onDemandResourcesRootPath;
 
-    public DaprDistributedApplicationLifecycleHook(IConfiguration configuration, IHostEnvironment environment, ILogger<DaprDistributedApplicationLifecycleHook> logger, IOptions<DaprOptions> options)
+    public DaprDistributedApplicationLifecycleHook(
+        IConfiguration configuration,
+        IHostEnvironment environment,
+        ILogger<DaprDistributedApplicationLifecycleHook> logger,
+        IOptions<DaprOptions> options,
+        PluggableComponentsManager pluggableComponentsManager)
     {
         _configuration = configuration;
         _environment = environment;
         _logger = logger;
         _options = options.Value;
+        _pluggableComponentsManager = pluggableComponentsManager;
     }
 
     public async Task BeforeStartAsync(DistributedApplicationModel appModel, CancellationToken cancellationToken = default)
@@ -351,6 +359,11 @@ internal sealed class DaprDistributedApplicationLifecycleHook : IDistributedAppl
 
         if (onDemandComponents.Any())
         {
+            if (_options.EnableAspireComponents is true)
+            {
+                await _pluggableComponentsManager.StartAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             _logger.LogInformation("Starting Dapr-related resources...");
 
             _onDemandResourcesRootPath = Directory.CreateTempSubdirectory("aspire-dapr.").FullName;
@@ -391,7 +404,13 @@ internal sealed class DaprDistributedApplicationLifecycleHook : IDistributedAppl
         string daprDefaultComponentsDirectory = Path.Combine(userDirectory, ".dapr", "components");
         string daprDefaultStateStorePath = Path.Combine(daprDefaultComponentsDirectory, "pubsub.yaml");
 
-        if (File.Exists(daprDefaultStateStorePath))
+        if (_options.EnableAspireComponents is true)
+        {
+            _logger.LogInformation("Using Aspire pub-sub for component '{ComponentName}'.", component.Name);
+
+            return await contentWriter(GetAspirePubSubContent(component)).ConfigureAwait(false);
+        }
+        else if (File.Exists(daprDefaultStateStorePath))
         {
             _logger.LogInformation("Using default Dapr pub-sub for component '{ComponentName}'.", component.Name);
 
@@ -414,7 +433,13 @@ internal sealed class DaprDistributedApplicationLifecycleHook : IDistributedAppl
         string daprDefaultComponentsDirectory = Path.Combine(userDirectory, ".dapr", "components");
         string daprDefaultStateStorePath = Path.Combine(daprDefaultComponentsDirectory, "statestore.yaml");
 
-        if (File.Exists(daprDefaultStateStorePath))
+        if (_options.EnableAspireComponents is true)
+        {
+            _logger.LogInformation("Using Aspire state store for component '{ComponentName}'.", component.Name);
+
+            return await contentWriter(GetAspireStateStoreContent(component)).ConfigureAwait(false);
+        }
+        else if (File.Exists(daprDefaultStateStorePath))
         {
             _logger.LogInformation("Using default Dapr state store for component '{ComponentName}'.", component.Name);
 
@@ -429,6 +454,23 @@ internal sealed class DaprDistributedApplicationLifecycleHook : IDistributedAppl
 
             return await contentWriter(GetInMemoryStateStoreContent(component)).ConfigureAwait(false);
         }
+    }
+
+    private static string GetAspirePubSubContent(DaprComponentResource component)
+    {
+        // NOTE: This component can only be used within a single Dapr application.
+
+        return
+            $"""
+             apiVersion: dapr.io/v1alpha1
+             kind: Component
+             metadata:
+                 name: {component.Name}
+             spec:
+                 type: pubsub.aspirestore
+                 version: v1
+                 metadata: []
+             """;
     }
 
     private static string GetInMemoryPubSubContent(DaprComponentResource component)
@@ -446,6 +488,21 @@ internal sealed class DaprDistributedApplicationLifecycleHook : IDistributedAppl
                 version: v1
                 metadata: []
             """;
+    }
+
+    private static string GetAspireStateStoreContent(DaprComponentResource component)
+    {
+        return
+            $"""
+             apiVersion: dapr.io/v1alpha1
+             kind: Component
+             metadata:
+                 name: {component.Name}
+             spec:
+                 type: state.aspirestore
+                 version: v1
+                 metadata: []
+             """;
     }
 
     private static string GetInMemoryStateStoreContent(DaprComponentResource component)
