@@ -2,6 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using Aspire.Hosting.ApplicationModel;
+using Azure.Provisioning.DurableTask;
+using Azure.Provisioning.Primitives;
 
 namespace Aspire.Hosting.Azure.DurableTask;
 
@@ -35,6 +37,33 @@ public sealed class DurableTaskSchedulerResource(string name, Action<AzureResour
     /// emulator (container) instead of a cloud-hosted service.
     /// </summary>
     public bool IsEmulator => this.IsContainer();
+
+    /// <inheritdoc/>
+    public override ProvisionableResource AddAsExistingResource(AzureResourceInfrastructure infra)
+    {
+        var bicepIdentifier = this.GetBicepIdentifier();
+        var resources = infra.GetProvisionableResources();
+
+        // Check if a scheduler with the same identifier already exists
+        var existingScheduler = resources.OfType<DurableTaskSchedulerProvisioningResource>()
+            .SingleOrDefault(s => s.BicepIdentifier == bicepIdentifier);
+
+        if (existingScheduler is not null)
+        {
+            return existingScheduler;
+        }
+
+        // Create and add new resource if it doesn't exist
+        var scheduler = DurableTaskSchedulerProvisioningResource.FromExisting(bicepIdentifier);
+
+        if (!TryApplyExistingResourceAnnotation(this, infra, scheduler))
+        {
+            scheduler.Name = NameOutputReference.AsProvisioningParameter(infra);
+        }
+
+        infra.Add(scheduler);
+        return scheduler;
+    }
 
     /// <summary>
     /// Gets the expression that resolves to the connection string for the Durable Task scheduler.

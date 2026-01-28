@@ -60,7 +60,9 @@ public static class DurableTaskResourceExtensions
 
         var scheduler = new DurableTaskSchedulerResource(name, configureInfrastructure);
 
-        return builder.AddResource(scheduler);
+        return builder.AddResource(scheduler)
+            .WithDefaultRoleAssignments(DurableTaskSchedulerBuiltInRole.GetBuiltInRoleName,
+                DurableTaskSchedulerBuiltInRole.DurableTaskDataContributor);
     }
 
     /// <summary>
@@ -283,5 +285,36 @@ public static class DurableTaskResourceExtensions
     public static IResourceBuilder<DurableTaskHubResource> WithTaskHubName(this IResourceBuilder<DurableTaskHubResource> builder, IResourceBuilder<ParameterResource> taskHubName)
     {
         return builder.WithAnnotation(new DurableTaskHubNameAnnotation(taskHubName.Resource));
+    }
+
+    /// <summary>
+    /// Assigns the specified roles to the given resource, granting it the necessary permissions
+    /// on the target Durable Task scheduler. This replaces the default role assignments for the resource.
+    /// </summary>
+    /// <param name="builder">The resource to which the specified roles will be assigned.</param>
+    /// <param name="target">The target Durable Task scheduler.</param>
+    /// <param name="roles">The built-in Durable Task Scheduler roles to be assigned.</param>
+    /// <returns>The updated <see cref="IResourceBuilder{T}"/> with the applied role assignments.</returns>
+    /// <remarks>
+    /// <example>
+    /// Assigns the DurableTaskDataContributor role to the 'Projects.Api' project.
+    /// <code lang="csharp">
+    /// var builder = DistributedApplication.CreateBuilder(args);
+    ///
+    /// var scheduler = builder.AddDurableTaskScheduler("scheduler");
+    ///
+    /// var api = builder.AddProject&lt;Projects.Api&gt;("api")
+    ///   .WithRoleAssignments(scheduler, DurableTaskSchedulerBuiltInRole.DurableTaskDataContributor)
+    ///   .WithReference(scheduler);
+    /// </code>
+    /// </example>
+    /// </remarks>
+    public static IResourceBuilder<T> WithRoleAssignments<T>(
+        this IResourceBuilder<T> builder,
+        IResourceBuilder<DurableTaskSchedulerResource> target,
+        params DurableTaskSchedulerBuiltInRole[] roles)
+        where T : IResource
+    {
+        return builder.WithRoleAssignments(target, DurableTaskSchedulerBuiltInRole.GetBuiltInRoleName, roles);
     }
 }
