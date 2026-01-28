@@ -10,14 +10,25 @@ namespace Aspire.Hosting.Azure.DurableTask;
 /// and a connection string for Durable Task orchestration scheduling.
 /// </summary>
 /// <param name="name">The unique resource name.</param>
-public sealed class DurableTaskSchedulerResource(string name) : Resource(name), IResourceWithEndpoints, IResourceWithConnectionString
+/// <param name="configureInfrastructure">Callback to configure the Azure infrastructure for the Durable Task scheduler.</param>
+public sealed class DurableTaskSchedulerResource(string name, Action<AzureResourceInfrastructure> configureInfrastructure)
+    : AzureProvisioningResource(name, configureInfrastructure), IResourceWithEndpoints, IResourceWithConnectionString, IResourceWithAzureFunctionsConfig
 {
-    /// <summary>
-    /// Gets the expression that resolves to the connection string for the Durable Task scheduler.
-    /// </summary>
-    public ReferenceExpression ConnectionStringExpression => CreateConnectionString();
+    internal List<DurableTaskHubResource> Hubs { get; } = [];
 
-    internal ReferenceExpression EmulatorDashboardEndpoint => CreateDashboardEndpoint();
+    /// <summary>
+    /// Gets the "schedulerEndpoint" output reference from the bicep template for the Durable Task scheduler resource.
+    /// </summary>
+    public BicepOutputReference SchedulerEndpoint => new("schedulerEndpoint", this);
+
+    /// <summary>
+    /// Gets the "name" output reference for the resource.
+    /// </summary>
+    public BicepOutputReference NameOutputReference => new("name", this);
+
+    internal EndpointReference EmulatorGrpcEndpoint => new(this, "grpc");
+
+    internal EndpointReference EmulatorDashboardEndpoint => new(this, "dashboard");
 
     /// <summary>
     /// Gets a value indicating whether the Durable Task scheduler is running using the local
@@ -25,13 +36,16 @@ public sealed class DurableTaskSchedulerResource(string name) : Resource(name), 
     /// </summary>
     public bool IsEmulator => this.IsContainer();
 
-    private ReferenceExpression CreateConnectionString()
+    /// <summary>
+    /// Gets the expression that resolves to the connection string for the Durable Task scheduler.
+    /// </summary>
+    public ReferenceExpression ConnectionStringExpression => GetConnectionString();
+
+    private ReferenceExpression GetConnectionString()
     {
         if (IsEmulator)
         {
-            var grpcEndpoint = new EndpointReference(this, "grpc");
-
-            return ReferenceExpression.Create($"Endpoint=http://{grpcEndpoint.Property(EndpointProperty.Host)}:{grpcEndpoint.Property(EndpointProperty.Port)};Authentication=None");
+            return ReferenceExpression.Create($"Endpoint=http://{EmulatorGrpcEndpoint.Property(EndpointProperty.Host)}:{EmulatorGrpcEndpoint.Property(EndpointProperty.Port)};Authentication=None");
         }
 
         if (this.TryGetLastAnnotation<DurableTaskSchedulerConnectionStringAnnotation>(out var connectionStringAnnotation))
@@ -44,18 +58,31 @@ public sealed class DurableTaskSchedulerResource(string name) : Resource(name), 
             };
         }
 
-        throw new InvalidOperationException($"Unable to resolve the Durable Task Scheduler connection string. Configure the scheduler using {nameof(DurableTaskResourceExtensions.RunAsEmulator)}() or {nameof(DurableTaskResourceExtensions.RunAsExisting)}(connectionString) before accessing {nameof(ConnectionStringExpression)}.");
+        // For Azure deployment, use the scheduler endpoint from Bicep output
+        return ReferenceExpression.Create($"Endpoint={SchedulerEndpoint};Authentication=DefaultAzure");
     }
 
-    private ReferenceExpression CreateDashboardEndpoint()
+    internal ReferenceExpression GetEmulatorDashboardUrl()
     {
         if (IsEmulator)
         {
-            var dashboardEndpoint = new EndpointReference(this, "dashboard");
-
-            return ReferenceExpression.Create($"http://{dashboardEndpoint.Property(EndpointProperty.Host)}:{dashboardEndpoint.Property(EndpointProperty.Port)}");
+            return ReferenceExpression.Create($"http://{EmulatorDashboardEndpoint.Property(EndpointProperty.Host)}:{EmulatorDashboardEndpoint.Property(EndpointProperty.Port)}");
         }
 
-        throw new NotImplementedException();
+        throw new InvalidOperationException("Dashboard URL is only available when running as emulator.");
+    }
+
+    void IResourceWithAzureFunctionsConfig.ApplyAzureFunctionsConfiguration(IDictionary<string, object> target, string connectionName)
+    {
+        if (IsEmulator)
+        {
+            // For emulator, use the full connection string
+            target[connectionName] = ConnectionStringExpression;
+        }
+        else
+        {
+            // For Azure deployment, use the scheduler endpoint
+            target[$"{connectionName}__endpoint"] = SchedulerEndpoint;
+        }
     }
 }

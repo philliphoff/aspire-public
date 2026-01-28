@@ -2,7 +2,10 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Azure;
 using Aspire.Hosting.Azure.DurableTask;
+using Azure.Provisioning;
+using Azure.Provisioning.Expressions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Aspire.Hosting;
@@ -25,11 +28,37 @@ public static class DurableTaskResourceExtensions
     /// var scheduler = builder.AddDurableTaskScheduler("scheduler");
     /// </code>
     /// </example>
-    public static IResourceBuilder<DurableTaskSchedulerResource> AddDurableTaskScheduler(this IDistributedApplicationBuilder builder, string name)
+    public static IResourceBuilder<DurableTaskSchedulerResource> AddDurableTaskScheduler(this IDistributedApplicationBuilder builder, [ResourceName] string name)
     {
-        var scheduler = new DurableTaskSchedulerResource(name);
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentException.ThrowIfNullOrEmpty(name);
 
-        scheduler.Annotations.Add(ManifestPublishingCallbackAnnotation.Ignore);
+        builder.AddAzureProvisioning();
+
+        var configureInfrastructure = static (AzureResourceInfrastructure infrastructure) =>
+        {
+            var resource = (DurableTaskSchedulerResource)infrastructure.AspireResource;
+
+            // Create the Durable Task Scheduler resource
+            // Note: This uses a placeholder resource type. Update when the actual Azure.Provisioning package
+            // for Durable Task Scheduler becomes available.
+            var schedulerName = new ProvisioningParameter("schedulerName", typeof(string))
+            {
+                Value = infrastructure.AspireResource.Name
+            };
+            infrastructure.Add(schedulerName);
+
+            // Output the scheduler endpoint for connection string construction
+            // The actual endpoint format should match the Azure Durable Task Scheduler service endpoint
+            infrastructure.Add(new ProvisioningOutput("schedulerEndpoint", typeof(string))
+            {
+                Value = BicepFunction.Interpolate($"https://{schedulerName}.durabletask.io")
+            });
+
+            infrastructure.Add(new ProvisioningOutput("name", typeof(string)) { Value = schedulerName });
+        };
+
+        var scheduler = new DurableTaskSchedulerResource(name, configureInfrastructure);
 
         return builder.AddResource(scheduler);
     }
@@ -183,11 +212,11 @@ public static class DurableTaskResourceExtensions
     ///     .WithTaskHubName("MyTaskHub");
     /// </code>
     /// </example>
-    public static IResourceBuilder<DurableTaskHubResource> AddTaskHub(this IResourceBuilder<DurableTaskSchedulerResource> builder, string name)
+    public static IResourceBuilder<DurableTaskHubResource> AddTaskHub(this IResourceBuilder<DurableTaskSchedulerResource> builder, [ResourceName] string name)
     {
         var hub = new DurableTaskHubResource(name, builder.Resource);
 
-        hub.Annotations.Add(ManifestPublishingCallbackAnnotation.Ignore);
+        builder.Resource.Hubs.Add(hub);
 
         var hubBuilder = builder.ApplicationBuilder.AddResource(hub);
 
@@ -196,9 +225,13 @@ public static class DurableTaskResourceExtensions
             {
                 var notifications = e.Services.GetRequiredService<ResourceNotificationService>();
 
-                var url = builder.Resource.IsEmulator
-                    ? await ReferenceExpression.Create($"{r.Parent.EmulatorDashboardEndpoint}/subscriptions/default/schedulers/default/taskhubs/{r.TaskHubName}").GetValueAsync(ct).ConfigureAwait(false)
-                    : null;
+                string? url = null;
+                if (builder.Resource.IsEmulator)
+                {
+                    var dashboardUrl = await r.Parent.GetEmulatorDashboardUrl().GetValueAsync(ct).ConfigureAwait(false);
+                    var taskHubName = await r.TaskHubName.GetValueAsync(ct).ConfigureAwait(false);
+                    url = $"{dashboardUrl}/subscriptions/default/schedulers/default/taskhubs/{taskHubName}";
+                }
 
                 await notifications.PublishUpdateAsync(r, snapshot => snapshot with
                 {

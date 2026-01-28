@@ -90,28 +90,28 @@ public class DurableTaskResourceExtensionsTests
     }
 
     [Fact]
-    public void AddDurableTaskScheduler_IsExcludedFromPublishingManifest()
+    public void AddDurableTaskScheduler_IsPublishableResource()
     {
         using var builder = TestDistributedApplicationBuilder.Create();
 
         var dts = builder.AddDurableTaskScheduler("dts");
 
-        Assert.True(dts.Resource.TryGetAnnotationsOfType<ManifestPublishingCallbackAnnotation>(out var manifestAnnotations));
-        var annotation = Assert.Single(manifestAnnotations);
-        Assert.Equal(ManifestPublishingCallbackAnnotation.Ignore, annotation);
+        // The scheduler resource should NOT have the ignore annotation since it's now publishable
+        Assert.False(dts.Resource.TryGetAnnotationsOfType<ManifestPublishingCallbackAnnotation>(out var manifestAnnotations) &&
+                     manifestAnnotations.Any(a => a == ManifestPublishingCallbackAnnotation.Ignore));
     }
 
     [Fact]
-    public void AddDurableTaskHub_IsExcludedFromPublishingManifest()
+    public void AddDurableTaskHub_IsChildOfScheduler()
     {
         using var builder = TestDistributedApplicationBuilder.Create();
 
         var dts = builder.AddDurableTaskScheduler("dts").RunAsExisting("Endpoint=https://existing-scheduler.durabletask.io;Authentication=DefaultAzure");
         var taskHub = dts.AddTaskHub("hub");
 
-        Assert.True(taskHub.Resource.TryGetAnnotationsOfType<ManifestPublishingCallbackAnnotation>(out var manifestAnnotations));
-        var annotation = Assert.Single(manifestAnnotations);
-        Assert.Equal(ManifestPublishingCallbackAnnotation.Ignore, annotation);
+        // Verify the hub is a child of the scheduler
+        Assert.Same(dts.Resource, taskHub.Resource.Parent);
+        Assert.Contains(taskHub.Resource, dts.Resource.Hubs);
     }
 
     [Fact]
@@ -125,8 +125,11 @@ public class DurableTaskResourceExtensionsTests
         Assert.False(dts.ApplicationBuilder.ExecutionContext.IsRunMode);
         Assert.True(dts.ApplicationBuilder.ExecutionContext.IsPublishMode);
 
-        var ex = Assert.Throws<InvalidOperationException>(() => _ = dts.Resource.ConnectionStringExpression);
-        Assert.Contains("Unable to resolve the Durable Task Scheduler connection string", ex.Message);
+        // In publish mode, RunAsExisting should not apply the connection string annotation;
+        // instead, the connection string should come from the Bicep output reference
+        var connectionStringExpression = dts.Resource.ConnectionStringExpression;
+        Assert.NotNull(connectionStringExpression);
+        Assert.Contains("schedulerEndpoint", connectionStringExpression.ValueExpression);
     }
 
     [Fact]
@@ -140,7 +143,10 @@ public class DurableTaskResourceExtensionsTests
         Assert.False(dts.Resource.IsEmulator);
         Assert.DoesNotContain(dts.Resource.Annotations, a => a is EmulatorResourceAnnotation);
 
-        Assert.Throws<InvalidOperationException>(() => _ = dts.Resource.ConnectionStringExpression);
+        // In publish mode without emulator, the connection string should come from Bicep output
+        var connectionStringExpression = dts.Resource.ConnectionStringExpression;
+        Assert.NotNull(connectionStringExpression);
+        Assert.Contains("schedulerEndpoint", connectionStringExpression.ValueExpression);
     }
 
     [Fact]
@@ -244,13 +250,15 @@ public class DurableTaskResourceExtensionsTests
     }
 
     [Fact]
-    public void DurableTaskSchedulerResource_WithoutEmulatorOrExistingConnectionString_Throws()
+    public void DurableTaskSchedulerResource_WithoutEmulatorOrExistingConnectionString_UsesBicepOutput()
     {
         using var builder = TestDistributedApplicationBuilder.Create();
 
         var dts = builder.AddDurableTaskScheduler("dts");
 
-        var ex = Assert.Throws<InvalidOperationException>(() => _ = dts.Resource.ConnectionStringExpression);
-        Assert.Contains("Unable to resolve the Durable Task Scheduler connection string", ex.Message);
+        // Without emulator or existing connection string, the connection string should come from Bicep output
+        var connectionStringExpression = dts.Resource.ConnectionStringExpression;
+        Assert.NotNull(connectionStringExpression);
+        Assert.Contains("schedulerEndpoint", connectionStringExpression.ValueExpression);
     }
 }
