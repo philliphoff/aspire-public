@@ -5,7 +5,7 @@ using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
 using Aspire.Hosting.Azure.DurableTask;
 using Azure.Provisioning;
-using Azure.Provisioning.Expressions;
+using Azure.Provisioning.DurableTask;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Aspire.Hosting;
@@ -37,25 +37,51 @@ public static class DurableTaskResourceExtensions
 
         var configureInfrastructure = static (AzureResourceInfrastructure infrastructure) =>
         {
-            var resource = (DurableTaskSchedulerResource)infrastructure.AspireResource;
+            var aspireResource = (DurableTaskSchedulerResource)infrastructure.AspireResource;
 
-            // Create the Durable Task Scheduler resource
-            // Note: This uses a placeholder resource type. Update when the actual Azure.Provisioning package
-            // for Durable Task Scheduler becomes available.
-            var schedulerName = new ProvisioningParameter("schedulerName", typeof(string))
-            {
-                Value = infrastructure.AspireResource.Name
-            };
-            infrastructure.Add(schedulerName);
+            // Create the Durable Task Scheduler resource using the custom provisioning resource
+            var scheduler = AzureProvisioningResource.CreateExistingOrNewProvisionableResource(
+                infrastructure,
+                (identifier, name) =>
+                {
+                    var resource = DurableTaskSchedulerProvisioningResource.FromExisting(identifier);
+                    resource.Name = name;
+                    return resource;
+                },
+                (infra) =>
+                {
+                    var skuParameter = new ProvisioningParameter("sku", typeof(string))
+                    {
+                        Value = "Dedicated"
+                    };
+                    infra.Add(skuParameter);
+
+                    var resource = new DurableTaskSchedulerProvisioningResource(infra.AspireResource.GetBicepIdentifier())
+                    {
+                        Name = infra.AspireResource.Name,
+                        Location = new ProvisioningParameter(AzureBicepResource.KnownParameters.Location, typeof(string)),
+                        SkuName = skuParameter,
+                        SkuCapacity = 1
+                    };
+                    return resource;
+                });
 
             // Output the scheduler endpoint for connection string construction
-            // The actual endpoint format should match the Azure Durable Task Scheduler service endpoint
             infrastructure.Add(new ProvisioningOutput("schedulerEndpoint", typeof(string))
             {
-                Value = BicepFunction.Interpolate($"https://{schedulerName}.durabletask.io")
+                Value = scheduler.Endpoint
             });
 
-            infrastructure.Add(new ProvisioningOutput("name", typeof(string)) { Value = schedulerName });
+            // Output the name for role assignments
+            infrastructure.Add(new ProvisioningOutput("name", typeof(string)) { Value = scheduler.Name });
+
+            // Create TaskHub sub-resources
+            foreach (var hub in aspireResource.Hubs)
+            {
+                var taskHub = hub.ToProvisioningEntity();
+                taskHub.Parent = scheduler;
+                infrastructure.Add(taskHub);
+            }
         };
 
         var scheduler = new DurableTaskSchedulerResource(name, configureInfrastructure);

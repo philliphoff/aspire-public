@@ -2,6 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using Aspire.Hosting.ApplicationModel;
+using Azure.Provisioning;
+using Azure.Provisioning.DurableTask;
 
 namespace Aspire.Hosting.Azure.DurableTask;
 
@@ -30,6 +32,25 @@ public sealed class DurableTaskHubResource(string name, DurableTaskSchedulerReso
     /// </summary>
     public ReferenceExpression TaskHubName => GetTaskHubName();
 
+    /// <summary>
+    /// Gets the actual Task Hub name as a string for use in provisioning.
+    /// </summary>
+    internal string HubName => GetHubNameString();
+
+    private string GetHubNameString()
+    {
+        if (this.TryGetLastAnnotation<DurableTaskHubNameAnnotation>(out var taskHubNameAnnotation))
+        {
+            return taskHubNameAnnotation.HubName switch
+            {
+                string hubName => hubName,
+                _ => Name // Default to resource name if parameter is used
+            };
+        }
+
+        return Name;
+    }
+
     private ReferenceExpression GetTaskHubName()
     {
         if (this.TryGetLastAnnotation<DurableTaskHubNameAnnotation>(out var taskHubNameAnnotation))
@@ -43,5 +64,16 @@ public sealed class DurableTaskHubResource(string name, DurableTaskSchedulerReso
         }
 
         return ReferenceExpression.Create($"{Name}");
+    }
+
+    /// <summary>
+    /// Converts this resource to an Azure Provisioning entity.
+    /// </summary>
+    /// <returns>A <see cref="DurableTaskHubProvisioningResource"/> instance.</returns>
+    internal DurableTaskHubProvisioningResource ToProvisioningEntity()
+    {
+        var taskHub = new DurableTaskHubProvisioningResource(Infrastructure.NormalizeBicepIdentifier(Name));
+        taskHub.Name = HubName;
+        return taskHub;
     }
 }
