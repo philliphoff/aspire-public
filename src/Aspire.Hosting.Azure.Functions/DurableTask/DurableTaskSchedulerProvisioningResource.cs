@@ -62,6 +62,16 @@ internal sealed class DurableTaskSchedulerProvisioningResource : ProvisionableRe
     private BicepValue<int>? _skuCapacity;
 
     /// <summary>
+    /// Gets or sets the IP allowlist of the Durable Task Scheduler.
+    /// </summary>
+    public BicepList<string> IpAllowlist
+    {
+        get { Initialize(); return _ipAllowlist!; }
+        set { Initialize(); _ipAllowlist!.Assign(value); }
+    }
+    private BicepList<string>? _ipAllowlist;
+
+    /// <summary>
     /// Gets the endpoint of the Durable Task Scheduler (output).
     /// </summary>
     public BicepValue<string> Endpoint
@@ -75,8 +85,9 @@ internal sealed class DurableTaskSchedulerProvisioningResource : ProvisionableRe
     {
         _name = DefineProperty<string>(nameof(Name), ["name"], isOutput: false, isRequired: true);
         _location = DefineProperty<string>(nameof(Location), ["location"], isOutput: false, isRequired: true);
-        _skuName = DefineProperty<string>(nameof(SkuName), ["sku", "name"], isOutput: false, isRequired: false);
-        _skuCapacity = DefineProperty<int>(nameof(SkuCapacity), ["sku", "capacity"], isOutput: false, isRequired: false);
+        _skuName = DefineProperty<string>(nameof(SkuName), ["properties", "sku", "name"], isOutput: false, isRequired: false);
+        _skuCapacity = DefineProperty<int>(nameof(SkuCapacity), ["properties", "sku", "capacity"], isOutput: false, isRequired: false);
+        _ipAllowlist = DefineListProperty<string>(nameof(IpAllowlist), ["properties", "ipAllowlist"], isOutput: false, isRequired: false);
         _endpoint = DefineProperty<string>(nameof(Endpoint), ["properties", "endpoint"], isOutput: true, isRequired: false);
     }
 

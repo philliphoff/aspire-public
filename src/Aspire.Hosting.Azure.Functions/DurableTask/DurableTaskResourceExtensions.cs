@@ -52,7 +52,7 @@ public static class DurableTaskResourceExtensions
                 {
                     var skuParameter = new ProvisioningParameter("sku", typeof(string))
                     {
-                        Value = "Dedicated"
+                        Value = "Consumption"
                     };
                     infra.Add(skuParameter);
 
@@ -61,7 +61,7 @@ public static class DurableTaskResourceExtensions
                         Name = infra.AspireResource.Name,
                         Location = new ProvisioningParameter(AzureBicepResource.KnownParameters.Location, typeof(string)),
                         SkuName = skuParameter,
-                        SkuCapacity = 1
+                        IpAllowlist = ["0.0.0.0/0"]
                     };
                     return resource;
                 });
