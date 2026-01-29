@@ -17,21 +17,21 @@ public readonly struct DurableTaskSchedulerBuiltInRole : IEquatable<DurableTaskS
 
     /// <summary>
     /// Durable Task Data Contributor role - provides full access to durable task data operations.
-    /// Role ID: 46150c50-a455-46b1-bd48-84c5c87c09ab
+    /// Role ID: 0ad04412-c4d5-4796-b79c-f76d14c8d402
     /// </summary>
-    public static DurableTaskSchedulerBuiltInRole DurableTaskDataContributor { get; } = new("46150c50-a455-46b1-bd48-84c5c87c09ab");
-
-    /// <summary>
-    /// Durable Task Data Owner role - provides full access to durable task data operations including management.
-    /// Role ID: 5a05c28b-f393-4dd7-bf56-6fa1958e0eba
-    /// </summary>
-    public static DurableTaskSchedulerBuiltInRole DurableTaskDataOwner { get; } = new("5a05c28b-f393-4dd7-bf56-6fa1958e0eba");
+    public static DurableTaskSchedulerBuiltInRole DurableTaskDataContributor { get; } = new("0ad04412-c4d5-4796-b79c-f76d14c8d402");
 
     /// <summary>
     /// Durable Task Data Reader role - provides read-only access to durable task data.
-    /// Role ID: 89199220-a9a4-4ebb-811f-c9cfd7e9e826
+    /// Role ID: d6a5505f-6ebb-45a4-896e-ac8274cfc0ac
     /// </summary>
-    public static DurableTaskSchedulerBuiltInRole DurableTaskDataReader { get; } = new("89199220-a9a4-4ebb-811f-c9cfd7e9e826");
+    public static DurableTaskSchedulerBuiltInRole DurableTaskDataReader { get; } = new("d6a5505f-6ebb-45a4-896e-ac8274cfc0ac");
+
+    /// <summary>
+    /// Durable Task Worker role - provides access to execute durable task orchestrations and activities.
+    /// Role ID: 80d0d6b0-f522-40a4-8886-a5a11720c375
+    /// </summary>
+    public static DurableTaskSchedulerBuiltInRole DurableTaskWorker { get; } = new("80d0d6b0-f522-40a4-8886-a5a11720c375");
 
     /// <summary>
     /// Gets the role ID as a string.
@@ -48,9 +48,9 @@ public readonly struct DurableTaskSchedulerBuiltInRole : IEquatable<DurableTaskS
     {
         return role._value switch
         {
-            "46150c50-a455-46b1-bd48-84c5c87c09ab" => "Durable_Task_Data_Contributor",
-            "5a05c28b-f393-4dd7-bf56-6fa1958e0eba" => "Durable_Task_Data_Owner",
-            "89199220-a9a4-4ebb-811f-c9cfd7e9e826" => "Durable_Task_Data_Reader",
+            "0ad04412-c4d5-4796-b79c-f76d14c8d402" => "Durable_Task_Data_Contributor",
+            "d6a5505f-6ebb-45a4-896e-ac8274cfc0ac" => "Durable_Task_Data_Reader",
+            "80d0d6b0-f522-40a4-8886-a5a11720c375" => "Durable_Task_Worker",
             _ => role._value
         };
     }
