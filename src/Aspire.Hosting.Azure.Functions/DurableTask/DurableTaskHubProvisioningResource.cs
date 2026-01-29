@@ -17,7 +17,7 @@ internal sealed class DurableTaskHubProvisioningResource : ProvisionableResource
     /// </summary>
     /// <param name="bicepIdentifier">The Bicep identifier for this resource.</param>
     /// <param name="resourceVersion">The API version for the resource.</param>
-    public DurableTaskHubProvisioningResource(string bicepIdentifier, string? resourceVersion = "2025-04-01-preview")
+    public DurableTaskHubProvisioningResource(string bicepIdentifier, string? resourceVersion = "2025-11-01")
         : base(bicepIdentifier, new Azure.Core.ResourceType("Microsoft.DurableTask/schedulers/taskhubs"), resourceVersion)
     {
     }
@@ -55,7 +55,7 @@ internal sealed class DurableTaskHubProvisioningResource : ProvisionableResource
     /// <param name="bicepIdentifier">The Bicep identifier for this resource.</param>
     /// <param name="resourceVersion">The API version for the resource.</param>
     /// <returns>A new instance configured as an existing resource reference.</returns>
-    public static DurableTaskHubProvisioningResource FromExisting(string bicepIdentifier, string? resourceVersion = "2025-04-01-preview")
+    public static DurableTaskHubProvisioningResource FromExisting(string bicepIdentifier, string? resourceVersion = "2025-11-01")
     {
         return new DurableTaskHubProvisioningResource(bicepIdentifier, resourceVersion)
         {

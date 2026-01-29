@@ -16,7 +16,7 @@ internal sealed class DurableTaskSchedulerProvisioningResource : ProvisionableRe
     /// </summary>
     /// <param name="bicepIdentifier">The Bicep identifier for this resource.</param>
     /// <param name="resourceVersion">The API version for the resource.</param>
-    public DurableTaskSchedulerProvisioningResource(string bicepIdentifier, string? resourceVersion = "2025-04-01-preview")
+    public DurableTaskSchedulerProvisioningResource(string bicepIdentifier, string? resourceVersion = "2025-11-01")
         : base(bicepIdentifier, new Azure.Core.ResourceType("Microsoft.DurableTask/schedulers"), resourceVersion)
     {
     }
@@ -86,7 +86,7 @@ internal sealed class DurableTaskSchedulerProvisioningResource : ProvisionableRe
     /// <param name="bicepIdentifier">The Bicep identifier for this resource.</param>
     /// <param name="resourceVersion">The API version for the resource.</param>
     /// <returns>A new instance configured as an existing resource reference.</returns>
-    public static DurableTaskSchedulerProvisioningResource FromExisting(string bicepIdentifier, string? resourceVersion = "2025-04-01-preview")
+    public static DurableTaskSchedulerProvisioningResource FromExisting(string bicepIdentifier, string? resourceVersion = "2025-11-01")
     {
         return new DurableTaskSchedulerProvisioningResource(bicepIdentifier, resourceVersion)
         {

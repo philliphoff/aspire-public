@@ -328,7 +328,7 @@ public class DurableTaskResourceExtensionsTests
 
         // Verify the Bicep contains role assignment for DurableTaskDataContributor
         Assert.Contains("Microsoft.Authorization/roleAssignments", manifest.BicepText);
-        Assert.Contains("46150c50-a455-46b1-bd48-84c5c87c09ab", manifest.BicepText); // DurableTaskDataContributor GUID
+        Assert.Contains("0ad04412-c4d5-4796-b79c-f76d14c8d402", manifest.BicepText); // DurableTaskDataContributor GUID
         Assert.Contains("Microsoft.DurableTask/schedulers/taskhubs", manifest.BicepText);
         Assert.Contains("scope: hub", manifest.BicepText); // Role assignment is scoped to TaskHub, not Scheduler
     }
