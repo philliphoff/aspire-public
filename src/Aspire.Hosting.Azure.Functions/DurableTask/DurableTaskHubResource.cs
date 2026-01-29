@@ -4,6 +4,7 @@
 using Aspire.Hosting.ApplicationModel;
 using Azure.Provisioning;
 using Azure.Provisioning.DurableTask;
+using Azure.Provisioning.Primitives;
 
 namespace Aspire.Hosting.Azure.DurableTask;
 
@@ -12,11 +13,33 @@ namespace Aspire.Hosting.Azure.DurableTask;
 /// This resource extends the scheduler connection string with the TaskHub name so that clients can
 /// connect to the correct hub.
 /// </summary>
-/// <param name="name">The logical name of the Task Hub (used as the TaskHub value).</param>
-/// <param name="scheduler">The durable task scheduler resource whose connection string is the base for this hub.</param>
-public sealed class DurableTaskHubResource(string name, DurableTaskSchedulerResource scheduler)
-    : Resource(name), IResourceWithConnectionString, IResourceWithParent<DurableTaskSchedulerResource>
+/// <remarks>
+/// The TaskHub is created as a sub-resource of the parent Scheduler during provisioning.
+/// Role assignments target the TaskHub directly (principle of least privilege).
+/// </remarks>
+public sealed class DurableTaskHubResource : AzureProvisioningResource, IResourceWithConnectionString, IResourceWithParent<DurableTaskSchedulerResource>, IResourceWithAzureFunctionsConfig
 {
+    private readonly DurableTaskSchedulerResource _scheduler;
+
+    /// <summary>
+    /// Initializes a new instance of <see cref="DurableTaskHubResource"/>.
+    /// </summary>
+    /// <param name="name">The logical name of the Task Hub (used as the TaskHub value).</param>
+    /// <param name="scheduler">The durable task scheduler resource whose connection string is the base for this hub.</param>
+    public DurableTaskHubResource(string name, DurableTaskSchedulerResource scheduler)
+        : base(name, ConfigureTaskHubInfrastructure)
+    {
+        _scheduler = scheduler ?? throw new ArgumentNullException(nameof(scheduler));
+    }
+
+    // The TaskHub doesn't create its own infrastructure - it's created as part of the Scheduler's infrastructure.
+    // This callback is a no-op but is required by AzureProvisioningResource.
+    private static void ConfigureTaskHubInfrastructure(AzureResourceInfrastructure infrastructure)
+    {
+        // TaskHubs are created within the parent Scheduler's infrastructure.
+        // This method intentionally does nothing.
+    }
+
     /// <summary>
     /// Gets the connection string expression composed of the scheduler connection string and the TaskHub name.
     /// </summary>
@@ -25,7 +48,7 @@ public sealed class DurableTaskHubResource(string name, DurableTaskSchedulerReso
     /// <summary>
     /// Gets the parent durable task scheduler resource that provides the base connection string.
     /// </summary>
-    public DurableTaskSchedulerResource Parent => scheduler;
+    public DurableTaskSchedulerResource Parent => _scheduler;
 
     /// <summary>
     /// Gets the name of the Task Hub. If not provided, the logical name of this resource is returned.
@@ -75,5 +98,53 @@ public sealed class DurableTaskHubResource(string name, DurableTaskSchedulerReso
         var taskHub = new DurableTaskHubProvisioningResource(Infrastructure.NormalizeBicepIdentifier(Name));
         taskHub.Name = HubName;
         return taskHub;
+    }
+
+    /// <inheritdoc/>
+    public override ProvisionableResource AddAsExistingResource(AzureResourceInfrastructure infra)
+    {
+        var bicepIdentifier = this.GetBicepIdentifier();
+        var resources = infra.GetProvisionableResources();
+
+        // Check if a TaskHub with the same identifier already exists
+        var existingTaskHub = resources.OfType<DurableTaskHubProvisioningResource>()
+            .SingleOrDefault(th => th.BicepIdentifier == bicepIdentifier);
+
+        if (existingTaskHub is not null)
+        {
+            return existingTaskHub;
+        }
+
+        // First, add the parent scheduler as an existing resource
+        var parentScheduler = (DurableTaskSchedulerProvisioningResource)Parent.AddAsExistingResource(infra);
+
+        // Create the TaskHub as existing, referencing the parent scheduler
+        var taskHub = DurableTaskHubProvisioningResource.FromExisting(bicepIdentifier);
+        taskHub.Name = HubName;
+        taskHub.Parent = parentScheduler;
+
+        infra.Add(taskHub);
+        return taskHub;
+    }
+
+    /// <inheritdoc/>
+    void IResourceWithAzureFunctionsConfig.ApplyAzureFunctionsConfiguration(IDictionary<string, object> target, string connectionName)
+    {
+        if (Parent.IsEmulator)
+        {
+            // For emulator, use the full connection string (includes TaskHub)
+            target[connectionName] = ConnectionStringExpression;
+        }
+        else
+        {
+            // For Azure deployment, use the scheduler endpoint and TaskHub name
+            target[$"{connectionName}__endpoint"] = Parent.SchedulerEndpoint;
+            target[$"{connectionName}__taskHubName"] = TaskHubName;
+
+            // Add a ConnectionStringReference to self for role assignment detection.
+            // This ensures the TaskHub is recognized as an Azure reference and its
+            // DefaultRoleAssignmentsAnnotation is applied.
+            target[connectionName] = new ConnectionStringReference(this, optional: true);
+        }
     }
 }

@@ -86,9 +86,10 @@ public static class DurableTaskResourceExtensions
 
         var scheduler = new DurableTaskSchedulerResource(name, configureInfrastructure);
 
-        return builder.AddResource(scheduler)
-            .WithDefaultRoleAssignments(DurableTaskSchedulerBuiltInRole.GetBuiltInRoleName,
-                DurableTaskSchedulerBuiltInRole.DurableTaskDataContributor);
+        // Note: Role assignments are NOT added to the Scheduler by default.
+        // Instead, they should be added to TaskHubs (principle of least privilege).
+        // Use WithRoleAssignments(scheduler, ...) to explicitly grant roles on the Scheduler if needed.
+        return builder.AddResource(scheduler);
     }
 
     /// <summary>
@@ -230,6 +231,15 @@ public static class DurableTaskResourceExtensions
     /// <param name="builder">The scheduler resource builder.</param>
     /// <param name="name">The logical name of the task hub resource.</param>
     /// <returns>An <see cref="IResourceBuilder{TResource}"/> for the task hub resource.</returns>
+    /// <remarks>
+    /// By default, resources that reference the TaskHub will be assigned the following role:
+    /// <list type="bullet">
+    /// <item><see cref="DurableTaskSchedulerBuiltInRole.DurableTaskDataContributor"/></item>
+    /// </list>
+    /// This follows the principle of least privilege by granting access to the specific TaskHub
+    /// rather than the parent Scheduler. Use <see cref="WithRoleAssignments{T}(IResourceBuilder{T}, IResourceBuilder{DurableTaskHubResource}, DurableTaskSchedulerBuiltInRole[])"/>
+    /// to customize the roles assigned.
+    /// </remarks>
     /// <example>
     /// Add a task hub under a scheduler:
     /// <code>
@@ -246,7 +256,9 @@ public static class DurableTaskResourceExtensions
 
         builder.Resource.Hubs.Add(hub);
 
-        var hubBuilder = builder.ApplicationBuilder.AddResource(hub);
+        var hubBuilder = builder.ApplicationBuilder.AddResource(hub)
+            .WithDefaultRoleAssignments(DurableTaskSchedulerBuiltInRole.GetBuiltInRoleName,
+                DurableTaskSchedulerBuiltInRole.DurableTaskDataContributor);
 
         hubBuilder.OnResourceReady(
             async (r, e, ct) =>
@@ -322,22 +334,56 @@ public static class DurableTaskResourceExtensions
     /// <param name="roles">The built-in Durable Task Scheduler roles to be assigned.</param>
     /// <returns>The updated <see cref="IResourceBuilder{T}"/> with the applied role assignments.</returns>
     /// <remarks>
+    /// Use this method when you need to grant permissions at the Scheduler level rather than
+    /// the TaskHub level. For most use cases, prefer using <see cref="WithRoleAssignments{T}(IResourceBuilder{T}, IResourceBuilder{DurableTaskHubResource}, DurableTaskSchedulerBuiltInRole[])"/>
+    /// to grant permissions on specific TaskHubs instead (principle of least privilege).
     /// <example>
-    /// Assigns the DurableTaskDataContributor role to the 'Projects.Api' project.
+    /// Assigns the DurableTaskDataOwner role to the 'Projects.Api' project on the scheduler.
     /// <code lang="csharp">
     /// var builder = DistributedApplication.CreateBuilder(args);
     ///
     /// var scheduler = builder.AddDurableTaskScheduler("scheduler");
     ///
     /// var api = builder.AddProject&lt;Projects.Api&gt;("api")
-    ///   .WithRoleAssignments(scheduler, DurableTaskSchedulerBuiltInRole.DurableTaskDataContributor)
-    ///   .WithReference(scheduler);
+    ///   .WithRoleAssignments(scheduler, DurableTaskSchedulerBuiltInRole.DurableTaskDataOwner);
     /// </code>
     /// </example>
     /// </remarks>
     public static IResourceBuilder<T> WithRoleAssignments<T>(
         this IResourceBuilder<T> builder,
         IResourceBuilder<DurableTaskSchedulerResource> target,
+        params DurableTaskSchedulerBuiltInRole[] roles)
+        where T : IResource
+    {
+        return builder.WithRoleAssignments(target, DurableTaskSchedulerBuiltInRole.GetBuiltInRoleName, roles);
+    }
+
+    /// <summary>
+    /// Assigns the specified roles to the given resource, granting it the necessary permissions
+    /// on the target Durable Task hub. This replaces the default role assignments for the resource.
+    /// </summary>
+    /// <param name="builder">The resource to which the specified roles will be assigned.</param>
+    /// <param name="target">The target Durable Task hub.</param>
+    /// <param name="roles">The built-in Durable Task Scheduler roles to be assigned.</param>
+    /// <returns>The updated <see cref="IResourceBuilder{T}"/> with the applied role assignments.</returns>
+    /// <remarks>
+    /// <example>
+    /// Assigns the DurableTaskDataContributor role to the 'Projects.Api' project on a specific TaskHub.
+    /// <code lang="csharp">
+    /// var builder = DistributedApplication.CreateBuilder(args);
+    ///
+    /// var scheduler = builder.AddDurableTaskScheduler("scheduler");
+    /// var hub = scheduler.AddTaskHub("hub");
+    ///
+    /// var api = builder.AddProject&lt;Projects.Api&gt;("api")
+    ///   .WithRoleAssignments(hub, DurableTaskSchedulerBuiltInRole.DurableTaskDataContributor)
+    ///   .WithReference(hub);
+    /// </code>
+    /// </example>
+    /// </remarks>
+    public static IResourceBuilder<T> WithRoleAssignments<T>(
+        this IResourceBuilder<T> builder,
+        IResourceBuilder<DurableTaskHubResource> target,
         params DurableTaskSchedulerBuiltInRole[] roles)
         where T : IResource
     {

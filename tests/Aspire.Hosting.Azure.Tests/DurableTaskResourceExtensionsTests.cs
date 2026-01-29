@@ -2,8 +2,11 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Azure.DurableTask;
 using Aspire.Hosting.Tests.Utils;
 using Aspire.Hosting.Utils;
+using Microsoft.Extensions.DependencyInjection;
+using static Aspire.Hosting.Utils.AzureManifestUtils;
 
 namespace Aspire.Hosting.Azure.Tests;
 
@@ -260,5 +263,78 @@ public class DurableTaskResourceExtensionsTests
         var connectionStringExpression = dts.Resource.ConnectionStringExpression;
         Assert.NotNull(connectionStringExpression);
         Assert.Contains("schedulerEndpoint", connectionStringExpression.ValueExpression);
+    }
+
+    [Fact]
+    public void TaskHub_HasDefaultRoleAssignmentsAnnotation()
+    {
+        using var builder = TestDistributedApplicationBuilder.Create();
+
+        var scheduler = builder.AddDurableTaskScheduler("scheduler");
+        var hub = scheduler.AddTaskHub("hub");
+
+        // The TaskHub should have the DefaultRoleAssignmentsAnnotation with DurableTaskDataContributor
+        Assert.True(hub.Resource.TryGetLastAnnotation<DefaultRoleAssignmentsAnnotation>(out var defaults));
+        Assert.NotNull(defaults);
+        Assert.Single(defaults.Roles, r => r.Id == DurableTaskSchedulerBuiltInRole.DurableTaskDataContributor.ToString());
+    }
+
+    [Fact]
+    public async Task TaskHub_Reference_AssignsRoleInPublishMode()
+    {
+        using var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Publish);
+        builder.AddAzureContainerAppEnvironment("env");
+
+        var scheduler = builder.AddDurableTaskScheduler("scheduler");
+        var hub = scheduler.AddTaskHub("hub");
+
+        var project = builder.AddProject<Project>("api", launchProfileName: null)
+            .WithReference(hub);
+
+        using var app = builder.Build();
+        await ExecuteBeforeStartHooksAsync(app, default);
+
+        // In publish mode with AzureContainerAppsInfrastructure, the DefaultRoleAssignmentsAnnotation
+        // should be copied to the referencing resource's RoleAssignmentAnnotation.
+        Assert.True(project.Resource.TryGetLastAnnotation<RoleAssignmentAnnotation>(out var roleAssignment));
+        Assert.Equal(hub.Resource, roleAssignment.Target);
+        Assert.Single(roleAssignment.Roles, r => r.Id == DurableTaskSchedulerBuiltInRole.DurableTaskDataContributor.ToString());
+    }
+
+    [Fact]
+    public async Task TaskHub_RunMode_GeneratesRoleAssignmentBicep()
+    {
+        using var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Run);
+        builder.AddAzureContainerAppEnvironment("env");
+
+        var scheduler = builder.AddDurableTaskScheduler("scheduler");
+        var hub = scheduler.AddTaskHub("hub");
+
+        var project = builder.AddProject<Project>("api", launchProfileName: null)
+            .WithReference(hub);
+
+        using var app = builder.Build();
+        await ExecuteBeforeStartHooksAsync(app, default);
+
+        // In Run mode, role assignments are added to a separate '*-roles' resource
+        var model = app.Services.GetRequiredService<DistributedApplicationModel>();
+        var roleAssignmentResource = model.Resources
+            .OfType<AzureProvisioningResource>()
+            .SingleOrDefault(r => r.Name == "hub-roles");
+
+        Assert.NotNull(roleAssignmentResource);
+
+        var manifest = await GetManifestWithBicep(roleAssignmentResource, skipPreparer: true);
+
+        // Verify the Bicep contains role assignment for DurableTaskDataContributor
+        Assert.Contains("Microsoft.Authorization/roleAssignments", manifest.BicepText);
+        Assert.Contains("46150c50-a455-46b1-bd48-84c5c87c09ab", manifest.BicepText); // DurableTaskDataContributor GUID
+        Assert.Contains("Microsoft.DurableTask/schedulers/taskhubs", manifest.BicepText);
+        Assert.Contains("scope: hub", manifest.BicepText); // Role assignment is scoped to TaskHub, not Scheduler
+    }
+
+    private sealed class Project : IProjectMetadata
+    {
+        public string ProjectPath => "project";
     }
 }
