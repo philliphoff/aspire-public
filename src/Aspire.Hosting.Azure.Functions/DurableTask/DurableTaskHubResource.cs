@@ -146,5 +146,11 @@ public sealed class DurableTaskHubResource : AzureProvisioningResource, IResourc
             // DefaultRoleAssignmentsAnnotation is applied.
             target[connectionName] = new ConnectionStringReference(this, optional: true);
         }
+
+        // Set canonical DTS environment variables (scheduler connection string without TaskHub)
+        target["DURABLE_TASK_SCHEDULER_CONNECTION_STRING"] = Parent.ConnectionStringExpression;
+
+        // Set the task hub name environment variable (used by host.json)
+        target["TASKHUB_NAME"] = TaskHubName;
     }
 }

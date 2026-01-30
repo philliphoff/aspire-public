@@ -176,6 +176,12 @@ public static class DurableTaskResourceExtensions
         // Mark this resource as an emulator for consistent resource identification and tooling support
         builder.WithAnnotation(new EmulatorResourceAnnotation());
 
+        // Mark all existing hubs as emulators too (for role assignment skipping)
+        foreach (var hub in builder.Resource.Hubs)
+        {
+            hub.Annotations.Add(new EmulatorResourceAnnotation());
+        }
+
         builder.WithEndpoint(name: "grpc", targetPort: 8080)
                .WithHttpEndpoint(name: "http", targetPort: 8081)
                .WithHttpEndpoint(name: "dashboard", targetPort: 8082)
@@ -259,6 +265,12 @@ public static class DurableTaskResourceExtensions
         var hubBuilder = builder.ApplicationBuilder.AddResource(hub)
             .WithDefaultRoleAssignments(DurableTaskSchedulerBuiltInRole.GetBuiltInRoleName,
                 DurableTaskSchedulerBuiltInRole.DurableTaskDataContributor);
+
+        // If the parent scheduler is already running as emulator, mark the hub as emulator too
+        if (builder.Resource.IsEmulator)
+        {
+            hubBuilder.WithAnnotation(new EmulatorResourceAnnotation());
+        }
 
         hubBuilder.OnResourceReady(
             async (r, e, ct) =>
